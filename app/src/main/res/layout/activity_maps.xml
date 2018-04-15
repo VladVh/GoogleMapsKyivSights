@@ -1,0 +1,44 @@
+<layout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <data>
+        <import type="android.view.View" />
+
+        <!--<variable-->
+        <variable
+            name="text"
+            type="String"/>
+        <!--name="viewModel"-->
+        <!--type="com.example.vvoitsekh.databindinglivedata.tasks.TasksViewModel"/>-->
+    </data>
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:layout_margin="10dp"
+            android:background="#80FFFFFF"
+            android:text="@string/findRoute"
+            />
+
+        <fragment
+            xmlns:tools="http://schemas.android.com/tools"
+            android:id="@+id/map"
+            android:name="com.google.android.gms.maps.SupportMapFragment"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            tools:context="com.example.vvoitsekh.googlemapskyivsights.MapsActivity" >
+
+            <!--<Button-->
+                <!--android:layout_width="wrap_content"-->
+                <!--android:layout_height="wrap_content"-->
+                <!--android:text="hello"-->
+                <!--/>-->
+        </fragment>
+    </RelativeLayout>
+
+</layout>
