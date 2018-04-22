@@ -1,8 +1,12 @@
 package com.example.vvoitsekh.googlemapskyivsights
 
+import android.content.Context
 import android.databinding.DataBindingUtil
 import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
 import com.example.vvoitsekh.googlemapskyivsights.databinding.ActivityMapsBinding
 import com.example.vvoitsekh.googlemapskyivsights.di.MapsViewModel
 import com.google.android.gms.maps.*
@@ -11,6 +15,11 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
 import dagger.android.AndroidInjection
 import javax.inject.Inject
+import com.example.vvoitsekh.googlemapskyivsights.R.id.listview
+
+import android.widget.ArrayAdapter
+import android.widget.TextView
+
 
 class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
@@ -31,6 +40,16 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         val mapFragment = supportFragmentManager
                 .findFragmentById(R.id.map) as SupportMapFragment
         mapFragment.getMapAsync(this)
+
+        val values = arrayOf("Android", "iPhone", "WindowsMobile", "Blackberry", "WebOS", "Ubuntu", "Windows7", "Max OS X", "Linux", "OS/2", "Ubuntu", "Windows7", "Max OS X", "Linux", "OS/2", "Ubuntu", "Windows7", "Max OS X", "Linux", "OS/2", "Android", "iPhone", "WindowsMobile")
+
+        val list = ArrayList<String>()
+        for (i in values.indices) {
+            list.add(values[i])
+        }
+        val adapter = StableArrayAdapter(this,
+                R.layout.listview_item, list)
+        mBinding.listview.adapter = adapter
     }
 
     /**
@@ -55,5 +74,48 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         for(marker in markers) {
             mMap.addMarker(marker)
         }
+
+
+    }
+
+    fun findPaths(view: View) {
+        mBinding.listview.visibility = View.VISIBLE
+    }
+
+    private inner class StableArrayAdapter(context: Context, textViewResourceId: Int,
+                                           objects: List<String>) : ArrayAdapter<String>(context, textViewResourceId, objects) {
+
+        internal var mIdMap = HashMap<String, Int>()
+
+        init {
+            for (i in objects.indices) {
+                mIdMap.put(objects[i], i)
+            }
+        }
+
+
+        override fun getItemId(position: Int): Long {
+            val item = getItem(position)
+            return mIdMap[item]!!.toLong()
+        }
+
+
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+            val data = getItem(position)
+            if (convertView == null) {
+                val viewHolder = ViewHolder()
+                var view = LayoutInflater.from(context).inflate(R.layout.listview_item, parent, false)
+                viewHolder.point = view.findViewById(R.id.points)
+                viewHolder.point.text = data
+                view.tag = viewHolder
+                return view
+            }
+            return convertView
+        }
+    }
+
+    private inner class ViewHolder {
+        lateinit var point:TextView
     }
 }
