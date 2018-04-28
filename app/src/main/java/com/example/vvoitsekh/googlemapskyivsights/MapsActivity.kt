@@ -4,6 +4,7 @@ import android.content.Context
 import android.databinding.DataBindingUtil
 import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -19,6 +20,14 @@ import com.example.vvoitsekh.googlemapskyivsights.R.id.listview
 
 import android.widget.ArrayAdapter
 import android.widget.TextView
+import com.example.vvoitsekh.googlemapskyivsights.db.Route
+import com.example.vvoitsekh.googlemapskyivsights.db.RouteDao
+import com.google.maps.DirectionsApi.RouteRestriction
+import com.google.maps.model.TravelMode
+import com.google.maps.model.DistanceMatrix
+import com.google.maps.DistanceMatrixApi
+import com.google.maps.GeoApiContext
+import com.google.maps.errors.ApiException
 
 
 class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
@@ -28,6 +37,8 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var mBinding: ActivityMapsBinding
 
     @Inject lateinit var mViewModel: MapsViewModel
+
+    @Inject lateinit var mRouteDao: RouteDao
 
     override fun onCreate(savedInstanceState: Bundle?) {
         AndroidInjection.inject(this)
@@ -40,6 +51,31 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         val mapFragment = supportFragmentManager
                 .findFragmentById(R.id.map) as SupportMapFragment
         mapFragment.getMapAsync(this)
+
+        mRouteDao.deleteAll()
+        val context = GeoApiContext.Builder().apiKey("AIzaSyDubh9cgDqSQNf671ruFcOnsSeVCcnbsPk").build()
+        try {
+            val req = DistanceMatrixApi.newRequest(context)
+            val trix = req.origins("50.452778,30.514444")
+                    .destinations("50.434167,30.559167", "50.45,30.524167")
+                    .mode(TravelMode.WALKING)
+                    .language("en-US")
+                    .await()
+            for (row in trix.rows) {
+                for ((index,elem) in row.elements.withIndex()) {
+                    Log.d("results", elem.duration.humanReadable)
+                    mRouteDao.insert(
+                            Route(index.toLong(), mViewModel.mRepository.getPlaces()[0], mViewModel.mRepository.getPlaces()[index], elem.duration.toString()))
+                }
+            }
+            //Do something with result here
+            // ....
+        } catch (e: ApiException) {
+            Log.e("ERROR", e.message)
+        } catch (e: Exception) {
+            Log.e("ERROR", e.message)
+        }
+
 
         val values = arrayOf("Android", "iPhone", "WindowsMobile", "Blackberry", "WebOS", "Ubuntu", "Windows7", "Max OS X", "Linux", "OS/2", "Ubuntu", "Windows7", "Max OS X", "Linux", "OS/2", "Ubuntu", "Windows7", "Max OS X", "Linux", "OS/2", "Android", "iPhone", "WindowsMobile")
 

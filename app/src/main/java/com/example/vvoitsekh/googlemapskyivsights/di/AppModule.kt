@@ -5,6 +5,7 @@ import android.arch.persistence.room.Room
 import android.content.Context
 import com.example.vvoitsekh.databindinglivedata.di.ViewModelModule
 import com.example.vvoitsekh.googlemapskyivsights.PlacesRepository
+import com.example.vvoitsekh.googlemapskyivsights.db.SightsDatabase
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -18,14 +19,16 @@ class AppModule {
 
     @Singleton
     @Provides
-    fun provideDb() = PlacesRepository()
-//    @Singleton
-//    @Provides
-//    fun provideDb(context: Context) = TasksDatabase.buildDatabase(context)
+    fun providePlacesRepository() = PlacesRepository()
+
+    @Singleton
+    @Provides
+    fun provideDb(application: Application) =
+            Room.databaseBuilder(application, SightsDatabase::class.java, "sights.db").allowMainThreadQueries().build()
 //
-//    @Singleton
-//    @Provides
-//    fun provideTasksDao(database: TasksDatabase) = database.taskDao()
+    @Singleton
+    @Provides
+    fun provideRouteDao(database: SightsDatabase) = database.routeDao()
 
     @Singleton
     @Provides
