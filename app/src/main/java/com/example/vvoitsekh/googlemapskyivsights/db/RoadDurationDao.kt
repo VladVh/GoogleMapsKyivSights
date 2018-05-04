@@ -9,14 +9,14 @@ import android.arch.persistence.room.Query
  * Created by Vlad on 28.04.2018.
  */
 @Dao
-interface RouteDao {
+interface RoadDurationDao {
 
-    @Query("Select * from Distances")
-    fun getAll(): List<Route>
+    @Query("Select * from Durations")
+    fun getAll(): List<RoadDuration>
 
     @Insert(onConflict = REPLACE)
-    fun insert(route: Route)
+    fun insert(roadDuration: RoadDuration)
 
-    @Query("Delete from Distances")
+    @Query("Delete from Durations")
     fun deleteAll()
 }

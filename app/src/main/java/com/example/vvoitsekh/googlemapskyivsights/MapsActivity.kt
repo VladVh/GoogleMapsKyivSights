@@ -9,36 +9,32 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import com.example.vvoitsekh.googlemapskyivsights.databinding.ActivityMapsBinding
-import com.example.vvoitsekh.googlemapskyivsights.di.MapsViewModel
 import com.google.android.gms.maps.*
 
 import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.MarkerOptions
 import dagger.android.AndroidInjection
 import javax.inject.Inject
-import com.example.vvoitsekh.googlemapskyivsights.R.id.listview
 
 import android.widget.ArrayAdapter
 import android.widget.TextView
-import com.example.vvoitsekh.googlemapskyivsights.db.Route
-import com.example.vvoitsekh.googlemapskyivsights.db.RouteDao
-import com.google.maps.DirectionsApi.RouteRestriction
+import com.example.vvoitsekh.googlemapskyivsights.db.RoadDuration
+import com.example.vvoitsekh.googlemapskyivsights.db.RoadDurationDao
+import com.google.android.gms.maps.model.Marker
 import com.google.maps.model.TravelMode
-import com.google.maps.model.DistanceMatrix
 import com.google.maps.DistanceMatrixApi
 import com.google.maps.GeoApiContext
 import com.google.maps.errors.ApiException
 
 
-class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
+class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarkerClickListener {
 
     private lateinit var mMap: GoogleMap
-
     private lateinit var mBinding: ActivityMapsBinding
 
-    @Inject lateinit var mViewModel: MapsViewModel
+    private var mSelectedMarker: Marker? = null
 
-    @Inject lateinit var mRouteDao: RouteDao
+    @Inject lateinit var mViewModel: MapsViewModel
+    @Inject lateinit var mRouteDao: RoadDurationDao
 
     override fun onCreate(savedInstanceState: Bundle?) {
         AndroidInjection.inject(this)
@@ -52,7 +48,8 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                 .findFragmentById(R.id.map) as SupportMapFragment
         mapFragment.getMapAsync(this)
 
-        mRouteDao.deleteAll()
+        mViewModel.checkDatabase()
+
         val context = GeoApiContext.Builder().apiKey("AIzaSyDubh9cgDqSQNf671ruFcOnsSeVCcnbsPk").build()
         try {
             val req = DistanceMatrixApi.newRequest(context)
@@ -61,13 +58,13 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                     .mode(TravelMode.WALKING)
                     .language("en-US")
                     .await()
-            for (row in trix.rows) {
-                for ((index,elem) in row.elements.withIndex()) {
-                    Log.d("results", elem.duration.humanReadable)
-                    mRouteDao.insert(
-                            Route(index.toLong(), mViewModel.mRepository.getPlaces()[0], mViewModel.mRepository.getPlaces()[index], elem.duration.toString()))
-                }
-            }
+//            for (row in trix.rows) {
+//                for ((index,elem) in row.elements.withIndex()) {
+//                    Log.d("results", elem.duration.humanReadable)
+//                    mRouteDao.insert(
+//                            RoadDuration(index.toLong(), mViewModel.mRepository.getPlaces()[0], mViewModel.mRepository.getPlaces()[index], elem.duration.toString()))
+//                }
+//            }
             //Do something with result here
             // ....
         } catch (e: ApiException) {
@@ -110,12 +107,17 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         for(marker in markers) {
             mMap.addMarker(marker)
         }
-
-
     }
+
+    override fun onMarkerClick(marker: Marker?): Boolean {
+        mSelectedMarker = marker
+        return true
+    }
+
 
     fun findPaths(view: View) {
         mBinding.listview.visibility = View.VISIBLE
+
     }
 
     private inner class StableArrayAdapter(context: Context, textViewResourceId: Int,
