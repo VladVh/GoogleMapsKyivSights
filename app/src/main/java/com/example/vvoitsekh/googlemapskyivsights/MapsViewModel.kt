@@ -15,57 +15,118 @@ import javax.inject.Inject
 /**
  * Created by Vlad on 14.04.2018.
  */
-class MapsViewModel @Inject constructor(val mRepository: PlacesRepository, private val mRouteDao: RoadDurationDao): ViewModel() {
+class MapsViewModel @Inject constructor(val mRepository: PlacesRepository, private val mRouteDao: RoadDurationDao) : ViewModel() {
 
     private var placesOfInterest: List<Showplace> = mRepository.getPlaces()
+    val routes = ArrayList<Route>()
+    var currentRoute = ArrayList<Int>()
 
     fun getMarkers(): List<MarkerOptions> {
         return placesOfInterest.map { item -> MarkerOptions().position(item.getPosition()).title(item.name) }
     }
 
+    fun getPlaces(): List<Showplace> = placesOfInterest
+
     fun checkDatabase() {
-        if (mRouteDao.getAll().size != placesOfInterest.size * placesOfInterest.size) {
+        if (mRouteDao.getAll().size != placesOfInterest.size * (placesOfInterest.size)) {
             mRouteDao.deleteAll()
             NetworkCall(mRouteDao).execute(placesOfInterest)
         }
     }
 
-    fun generateRoutes(markerTitle: String) {
+    fun generateRoutes(markerTitle: String, limit: Long) {
         var start = placesOfInterest.indexOf(placesOfInterest.find { it.name == markerTitle })
 
         val durations = mRouteDao.getAll()
-        var adjacencyMatrix = Array<Array<Long>>(placesOfInterest.size, { i -> emptyArray() })
+        var adjacencyMatrix = Array(placesOfInterest.size, { LongArray(placesOfInterest.size) })
         for (elem in durations)
             adjacencyMatrix[elem.from][elem.to] = elem.duration
 
-        var used = emptyArray<Boolean>()
+        var used = Array<Boolean>(placesOfInterest.size, { it -> false })
         var minEdge = Array<Long>(placesOfInterest.size, { i -> Long.MAX_VALUE })
+        val selEdge = Array<Int>(placesOfInterest.size, { i -> -1 })
+        var pairs = Array(placesOfInterest.size, { ArrayList<Int>(placesOfInterest.size) })
+
         minEdge[0] = 0
-        
+
+        for (i in 0 until placesOfInterest.size) {
+            var v = -1
+            for (j in 0 until placesOfInterest.size) {
+                if (!used[j] && (v == -1 || minEdge[j] < minEdge[v]))
+                    v = j
+            }
+//            if (minEdge[v] == Long.MAX_VALUE) {
+//                Log.d("canceled", "No MST")
+//                break
+//            }
+            used[v] = true
+            for (t in 0 until placesOfInterest.size) {
+                if (adjacencyMatrix[v][t] < minEdge[t]) {
+                    minEdge[t] = adjacencyMatrix[v][t]
+                    selEdge[t] = v
+                }
+            }
+        }
+
+        for (i in 0 until placesOfInterest.size) {
+            pairs[i].add(selEdge[i])
+            pairs[selEdge[i]].add(i)
+        }
+
+        var newRoute = ArrayList<Int>()
+        newRoute.add(start)
+        for (elem in pairs[start]) {
+            newRoute.add(elem)
+            findRoute(newRoute, adjacencyMatrix, pairs, start, elem, start, adjacencyMatrix[start][elem], limit)
+            newRoute.remove(elem)
+        }
+
+
+    }
+
+    private fun findRoute(route: ArrayList<Int>,
+                          adjM: Array<LongArray>,
+                          pairs: Array<ArrayList<Int>>,
+                          prev: Int, current: Int, start: Int, currentLen: Long, maxLen: Long) {
+        for (elem in pairs[current]) {
+            if (elem != prev && (currentLen + adjM[current][elem] + adjM[elem][start]) < maxLen) {
+                route.add(elem)
+                routes.add(Route(route, currentLen + adjM[current][elem] + adjM[elem][start]))
+                findRoute(route, adjM, pairs, current, elem, start,
+                        (currentLen + adjM[current][elem]), maxLen)
+                route.remove(elem)
+            }
+        }
     }
 
     class NetworkCall(private var routeDao: RoadDurationDao) : AsyncTask<List<Showplace>, Void, List<RoadDuration>>() {
         override fun doInBackground(vararg params: List<Showplace>): List<RoadDuration> {
-            val context = GeoApiContext.Builder().apiKey("AIzaSyDubh9cgDqSQNf671ruFcOnsSeVCcnbsPk").build()
+            val context = GeoApiContext.Builder().apiKey("AIzaSyCwgJJ26wafmQdFLI6whLUExGCEBeL5aPA").build()
             val places = params[0]
             val routes = ArrayList<RoadDuration>()
             try {
-                val req = DistanceMatrixApi.newRequest(context)
-                val pointsString = places.map { "${it.lat},${it.lng}"}.joinToString { "," }
-                val trix = req.origins(pointsString)
-                        .destinations(pointsString)
-                        .mode(TravelMode.WALKING)
-                        .language("en-US")
-                        .await()
-                for ((rowId, row) in trix.rows.withIndex()) {
-                    for ((index,elem) in row.elements.withIndex()) {
-                        routes.add(RoadDuration(
-                                (row.elements.size * (rowId + 1) + index).toLong(),
-                                rowId,
-                                index,
-                                elem.duration.inSeconds))
+                val points = places.map { "${it.lat},${it.lng}" }
+                for ((column,point) in points.withIndex()) {
+                    val req = DistanceMatrixApi.newRequest(context)
+                    val destinations = points.joinToString("|")
+                    val trix = req.origins(point)
+                            .destinations(destinations)
+                            .mode(TravelMode.WALKING)
+                            .language("en-US")
+                            .await()
+
+                    for (row in trix.rows) {
+                        for ((index, elem) in row.elements.withIndex()) {
+                            if (index != column)
+                                routes.add(RoadDuration(
+                                        (row.elements.size * (column + 1) + index).toLong(),
+                                        column,
+                                        index,
+                                        elem.duration.inSeconds))
+                        }
                     }
                 }
+
             } catch (e: ApiException) {
                 Log.e("ERROR", e.message)
             } catch (e: Exception) {
@@ -73,6 +134,7 @@ class MapsViewModel @Inject constructor(val mRepository: PlacesRepository, priva
             }
             return routes
         }
+
 
         override fun onPostExecute(result: List<RoadDuration>) {
             for (route in result) {

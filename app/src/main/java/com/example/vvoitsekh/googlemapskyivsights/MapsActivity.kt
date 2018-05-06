@@ -8,6 +8,7 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
 import com.example.vvoitsekh.googlemapskyivsights.databinding.ActivityMapsBinding
 import com.google.android.gms.maps.*
 
@@ -17,9 +18,11 @@ import javax.inject.Inject
 
 import android.widget.ArrayAdapter
 import android.widget.TextView
-import com.example.vvoitsekh.googlemapskyivsights.db.RoadDuration
+import android.widget.Toast
 import com.example.vvoitsekh.googlemapskyivsights.db.RoadDurationDao
 import com.google.android.gms.maps.model.Marker
+import com.google.android.gms.maps.model.Polygon
+import com.google.android.gms.maps.model.PolygonOptions
 import com.google.maps.model.TravelMode
 import com.google.maps.DistanceMatrixApi
 import com.google.maps.GeoApiContext
@@ -32,6 +35,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarker
     private lateinit var mBinding: ActivityMapsBinding
 
     private var mSelectedMarker: Marker? = null
+    private val mPolygons = ArrayList<Polygon>()
 
     @Inject lateinit var mViewModel: MapsViewModel
     @Inject lateinit var mRouteDao: RoadDurationDao
@@ -50,39 +54,22 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarker
 
         mViewModel.checkDatabase()
 
-        val context = GeoApiContext.Builder().apiKey("AIzaSyDubh9cgDqSQNf671ruFcOnsSeVCcnbsPk").build()
-        try {
-            val req = DistanceMatrixApi.newRequest(context)
-            val trix = req.origins("50.452778,30.514444")
-                    .destinations("50.434167,30.559167", "50.45,30.524167")
-                    .mode(TravelMode.WALKING)
-                    .language("en-US")
-                    .await()
-//            for (row in trix.rows) {
-//                for ((index,elem) in row.elements.withIndex()) {
-//                    Log.d("results", elem.duration.humanReadable)
-//                    mRouteDao.insert(
-//                            RoadDuration(index.toLong(), mViewModel.mRepository.getPlaces()[0], mViewModel.mRepository.getPlaces()[index], elem.duration.toString()))
-//                }
-//            }
-            //Do something with result here
-            // ....
-        } catch (e: ApiException) {
-            Log.e("ERROR", e.message)
-        } catch (e: Exception) {
-            Log.e("ERROR", e.message)
+        mBinding.listview.onItemClickListener = AdapterView.OnItemClickListener { parent, view, position, id ->
+            val data = parent.getItemAtPosition(position) as Route
+            val places = mViewModel.getPlaces().slice(data.points)
+            val polygonOpt = PolygonOptions().addAll(places.map { LatLng(it.lat, it.lng) })
+
+            mPolygons[0].remove()
+            val polygon = mMap.addPolygon(polygonOpt)
+            mPolygons.add(polygon)
         }
 
-
-        val values = arrayOf("Android", "iPhone", "WindowsMobile", "Blackberry", "WebOS", "Ubuntu", "Windows7", "Max OS X", "Linux", "OS/2", "Ubuntu", "Windows7", "Max OS X", "Linux", "OS/2", "Ubuntu", "Windows7", "Max OS X", "Linux", "OS/2", "Android", "iPhone", "WindowsMobile")
-
-        val list = ArrayList<String>()
-        for (i in values.indices) {
-            list.add(values[i])
-        }
-        val adapter = StableArrayAdapter(this,
-                R.layout.listview_item, list)
-        mBinding.listview.adapter = adapter
+//        val values = arrayOf("Android", "iPhone", "WindowsMobile", "Blackberry", "WebOS", "Ubuntu", "Windows7", "Max OS X", "Linux", "OS/2", "Ubuntu", "Windows7", "Max OS X", "Linux", "OS/2", "Ubuntu", "Windows7", "Max OS X", "Linux", "OS/2", "Android", "iPhone", "WindowsMobile")
+//
+//        val list = ArrayList<String>()
+//        for (i in values.indices) {
+//            list.add(values[i])
+//        }
     }
 
     /**
@@ -96,7 +83,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarker
      */
     override fun onMapReady(googleMap: GoogleMap) {
         mMap = googleMap
-
+        mMap.setOnMarkerClickListener(this)
         // Add a marker in Sydney and move the camera
 
         val kyiv = LatLng(50.44, 30.52)
@@ -116,14 +103,26 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarker
 
 
     fun findPaths(view: View) {
-        mBinding.listview.visibility = View.VISIBLE
+        if (mSelectedMarker != null) {
+            if (mRouteDao.getAll().size == 0)
+                Toast.makeText(this, "loading data", Toast.LENGTH_SHORT)
+            else {
+                mViewModel.generateRoutes(mSelectedMarker?.title!!, mBinding.editTime.text.toString().toLong().toSeconds())
+                mViewModel.routes.sortBy { it.points.size }
+                val routes = mViewModel.routes.take(10)
 
+                val adapter = StableArrayAdapter(this,
+                        R.layout.listview_item, routes.toTypedArray())
+                mBinding.listview.adapter = adapter
+                mBinding.listview.visibility = View.VISIBLE
+            }
+        }
     }
 
     private inner class StableArrayAdapter(context: Context, textViewResourceId: Int,
-                                           objects: List<String>) : ArrayAdapter<String>(context, textViewResourceId, objects) {
+                                           objects: Array<Route>) : ArrayAdapter<Route>(context, textViewResourceId, objects) {
 
-        internal var mIdMap = HashMap<String, Int>()
+        internal var mIdMap = HashMap<Route, Int>()
 
         init {
             for (i in objects.indices) {
@@ -144,8 +143,10 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarker
             if (convertView == null) {
                 val viewHolder = ViewHolder()
                 var view = LayoutInflater.from(context).inflate(R.layout.listview_item, parent, false)
-                viewHolder.point = view.findViewById(R.id.points)
-                viewHolder.point.text = data
+                viewHolder.points = view.findViewById(R.id.points)
+                viewHolder.time = view.findViewById(R.id.time)
+                viewHolder.points.text = "places: ${data.points.size}"
+                viewHolder.time.text = "time: ${data.time.toMins()}"
                 view.tag = viewHolder
                 return view
             }
@@ -154,6 +155,15 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarker
     }
 
     private inner class ViewHolder {
-        lateinit var point:TextView
+        lateinit var points:TextView
+        lateinit var time:TextView
     }
+}
+
+private fun Long.toSeconds(): Long {
+    return this * 3600
+}
+
+private fun Long.toMins(): String {
+    return "${this / 3600} hour, ${this % 3600} min "
 }
