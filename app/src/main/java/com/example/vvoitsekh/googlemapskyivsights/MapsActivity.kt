@@ -1,9 +1,13 @@
 package com.example.vvoitsekh.googlemapskyivsights
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.databinding.DataBindingUtil
 import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
+import android.support.v4.app.ActivityCompat
+import android.support.v4.content.ContextCompat
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -59,7 +63,11 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarker
             val places = mViewModel.getPlaces().slice(data.points)
             val polygonOpt = PolygonOptions().addAll(places.map { LatLng(it.lat, it.lng) })
 
-            mPolygons[0].remove()
+            if (mPolygons.isNotEmpty()) {
+                val deleted = mPolygons.removeAt(0)
+                deleted.remove()
+            }
+
             val polygon = mMap.addPolygon(polygonOpt)
             mPolygons.add(polygon)
         }
@@ -84,6 +92,20 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarker
     override fun onMapReady(googleMap: GoogleMap) {
         mMap = googleMap
         mMap.setOnMarkerClickListener(this)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+            mMap.isMyLocationEnabled = true
+            mMap.uiSettings.isMyLocationButtonEnabled = true
+
+            mMap.setOnMyLocationButtonClickListener {
+                val loc = LatLng(mMap.myLocation.latitude,mMap.myLocation.longitude);
+                mMap.moveCamera(CameraUpdateFactory.newLatLng(loc))
+                true
+            }
+        } else {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 0)
+        }
+
         // Add a marker in Sydney and move the camera
 
         val kyiv = LatLng(50.44, 30.52)
@@ -98,6 +120,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarker
 
     override fun onMarkerClick(marker: Marker?): Boolean {
         mSelectedMarker = marker
+        marker?.showInfoWindow()
         return true
     }
 

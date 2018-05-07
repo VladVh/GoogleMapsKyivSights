@@ -28,7 +28,7 @@ class MapsViewModel @Inject constructor(val mRepository: PlacesRepository, priva
     fun getPlaces(): List<Showplace> = placesOfInterest
 
     fun checkDatabase() {
-        if (mRouteDao.getAll().size != placesOfInterest.size * (placesOfInterest.size)) {
+        if (mRouteDao.getAll().size != placesOfInterest.size * (placesOfInterest.size - 1)) {
             mRouteDao.deleteAll()
             NetworkCall(mRouteDao).execute(placesOfInterest)
         }
@@ -47,7 +47,7 @@ class MapsViewModel @Inject constructor(val mRepository: PlacesRepository, priva
         val selEdge = Array<Int>(placesOfInterest.size, { i -> -1 })
         var pairs = Array(placesOfInterest.size, { ArrayList<Int>(placesOfInterest.size) })
 
-        minEdge[0] = 0
+        //minEdge[0] = 0
 
         for (i in 0 until placesOfInterest.size) {
             var v = -1
@@ -61,7 +61,7 @@ class MapsViewModel @Inject constructor(val mRepository: PlacesRepository, priva
 //            }
             used[v] = true
             for (t in 0 until placesOfInterest.size) {
-                if (adjacencyMatrix[v][t] < minEdge[t]) {
+                if (adjacencyMatrix[v][t] != 0L && adjacencyMatrix[v][t] < minEdge[t]) {
                     minEdge[t] = adjacencyMatrix[v][t]
                     selEdge[t] = v
                 }
@@ -69,8 +69,10 @@ class MapsViewModel @Inject constructor(val mRepository: PlacesRepository, priva
         }
 
         for (i in 0 until placesOfInterest.size) {
-            pairs[i].add(selEdge[i])
-            pairs[selEdge[i]].add(i)
+            if (selEdge[i] != -1) {
+                pairs[i].add(selEdge[i])
+                pairs[selEdge[i]].add(i)
+            }
         }
 
         var newRoute = ArrayList<Int>()
@@ -91,9 +93,10 @@ class MapsViewModel @Inject constructor(val mRepository: PlacesRepository, priva
         for (elem in pairs[current]) {
             if (elem != prev && (currentLen + adjM[current][elem] + adjM[elem][start]) < maxLen) {
                 route.add(elem)
-                routes.add(Route(route, currentLen + adjM[current][elem] + adjM[elem][start]))
+                val curTime = currentLen + adjM[current][elem]
+                routes.add(Route(route.clone() as ArrayList<Int>, currentLen + adjM[current][elem] + adjM[elem][start]))
                 findRoute(route, adjM, pairs, current, elem, start,
-                        (currentLen + adjM[current][elem]), maxLen)
+                        (curTime), maxLen)
                 route.remove(elem)
             }
         }
