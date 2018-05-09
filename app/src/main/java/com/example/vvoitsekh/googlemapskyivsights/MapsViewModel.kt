@@ -19,8 +19,8 @@ import javax.inject.Inject
 class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private val mRouteDao: RoadDurationDao) : ViewModel() {
 
     private var placesOfInterest: List<Showplace> = mRepository.getPlaces()
+    private val indexArray = Array<Int>(placesOfInterest.size + 1, { it -> it})
     val routes = ArrayList<Route>()
-    var currentRoute = ArrayList<Int>()
 
     fun getMarkers(): List<MarkerOptions> {
         return placesOfInterest.map { item -> MarkerOptions().position(item.getPosition()).title(item.name) }
@@ -111,14 +111,14 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
         }
         var curLen = 0L
         var currentPath = ArrayList<Int>()
+        currentPath.add(start)
         for ((index,elem) in placesOfInterest.withIndex()) {
-            curLen += adjacencyMatrix[index][start]
+            curLen = adjacencyMatrix[index][start]
 
-            var possibleRoutes: List<Long>? = null
+            var possibleRoutes: List<Int>? = null
             if (2 * curLen < limit) {
                 currentPath.add(index)
-                //change!!
-                possibleRoutes = adjacencyMatrix[index].filterIndexed { id, item -> !currentPath.contains(id) }
+                possibleRoutes = indexArray.filter { item -> !currentPath.contains(item) }
             }
 
             if (possibleRoutes != null && possibleRoutes.isNotEmpty())
@@ -127,22 +127,27 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
         }
     }
 
-    fun traverseNextLayer(start: Int, prev:Int, curLen: Long, limit: Long, currentPath: ArrayList<Int>,
-                          possibleRoutes: List<Long>, adjacencyMatrix: Array<LongArray>) {
-        for ((index,elem) in possibleRoutes.withIndex()) {
-            if (curLen + elem + adjacencyMatrix[index][start] < limit) {
-                currentPath.add(index)
-                routes.add(Route(currentPath.clone() as ArrayList<Int>, curLen + elem + adjacencyMatrix[index][start]))
-                currentPath.remove(index)
+    private fun traverseNextLayer(start: Int, prev:Int, curLen: Long, limit: Long, currentPath: ArrayList<Int>,
+                                  possibleRoutes: List<Int>, adjacencyMatrix: Array<LongArray>) {
+        for (elem in possibleRoutes) {
+            if (curLen + adjacencyMatrix[prev][elem] + adjacencyMatrix[elem][start] < limit) {
+                currentPath.add(elem)
+                routes.add(Route(currentPath.clone() as ArrayList<Int>,
+                        curLen + adjacencyMatrix[prev][elem] + adjacencyMatrix[elem][start]))
+                currentPath.remove(elem)
             }
         }
-//        for (i in 0 until possibleRoutes.size) {
-//            currentPath.add(i)
-//            curLen +=
-//            var newRoutes = adjacencyMatrix[i].filterIndexed { id, item -> !currentPath.contains(id) }
-//            if (newRoutes != null && newRoutes.isNotEmpty())
-//                traverseNextLayer(start, curLen, limit, currentPath, possibleRoutes, adjacencyMatrix)
-//        }
+        for (elem in possibleRoutes) {
+            currentPath.add(elem)
+            val newLen = curLen + adjacencyMatrix[prev][elem]
+            if (newLen + adjacencyMatrix[elem][start] < limit) {
+                val newRoutes = indexArray.filter { item -> !currentPath.contains(item) }
+                if (newRoutes.isNotEmpty())
+                    traverseNextLayer(start, elem, newLen, limit, currentPath, newRoutes, adjacencyMatrix)
+            }
+            currentPath.remove(elem)
+
+        }
     }
 
 

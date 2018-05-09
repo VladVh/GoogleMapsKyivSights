@@ -238,7 +238,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
 
     fun findPaths(view: View) {
         mLastKnownLocation?.apply {
-            if (mRouteDao.getAll().size == 0)
+            if (mRouteDao.getAll().isEmpty())
                 Toast.makeText(this@MapsActivity, "loading data", Toast.LENGTH_SHORT).show()
             else {
                 NetworkPointCall(LatLng(mLastKnownLocation!!.latitude, mLastKnownLocation!!.longitude))
@@ -264,8 +264,9 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
             try {
                 val points = places.map { "${it.lat},${it.lng}" }
                 val req = DistanceMatrixApi.newRequest(context)
+                val origin = "${location.latitude},${location.longitude}"
                 val destinations = points.joinToString("|")
-                val trix = req.origins(location.toString())
+                val trix = req.origins(origin)
                         .destinations(destinations)
                         .mode(TravelMode.WALKING)
                         .language("en-US")
@@ -283,8 +284,19 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
         }
 
         override fun onPostExecute(result: List<Long>?) {
-            if (result != null)
+            if (result != null && result.isNotEmpty()) {
                 mViewModel.findLoops(result, mBinding.editTime.text.toString().toLong().toSeconds())
+
+                mViewModel.routes.sortBy { it.points.size }
+                val routes = mViewModel.routes.take(10)
+
+                val adapter = StableArrayAdapter(this@MapsActivity,
+                        R.layout.listview_item, routes.toTypedArray())
+                mBinding.listview.adapter = adapter
+                mBinding.listview.visibility = View.VISIBLE
+            }
+
+
         }
     }
 
