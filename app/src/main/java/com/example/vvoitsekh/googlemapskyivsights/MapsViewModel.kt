@@ -1,6 +1,7 @@
 package com.example.vvoitsekh.googlemapskyivsights
 
 import android.arch.lifecycle.ViewModel
+import android.location.Location
 import android.os.AsyncTask
 import android.util.Log
 import com.example.vvoitsekh.googlemapskyivsights.db.RoadDuration
@@ -15,7 +16,7 @@ import javax.inject.Inject
 /**
  * Created by Vlad on 14.04.2018.
  */
-class MapsViewModel @Inject constructor(val mRepository: PlacesRepository, private val mRouteDao: RoadDurationDao) : ViewModel() {
+class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private val mRouteDao: RoadDurationDao) : ViewModel() {
 
     private var placesOfInterest: List<Showplace> = mRepository.getPlaces()
     val routes = ArrayList<Route>()
@@ -30,13 +31,14 @@ class MapsViewModel @Inject constructor(val mRepository: PlacesRepository, priva
     fun checkDatabase() {
         if (mRouteDao.getAll().size != placesOfInterest.size * (placesOfInterest.size - 1)) {
             mRouteDao.deleteAll()
-            NetworkCall(mRouteDao).execute(placesOfInterest)
+            NetworkDatasetCall(mRouteDao).execute(placesOfInterest)
         }
     }
 
-    fun generateRoutes(markerTitle: String, limit: Long) {
-        var start = placesOfInterest.indexOf(placesOfInterest.find { it.name == markerTitle })
+    fun generateRoutes(markerTitle: Location, limit: Long) {
+        //var start = placesOfInterest.indexOf(placesOfInterest.find { it.name == markerTitle })
 
+        val start = 0
         val durations = mRouteDao.getAll()
         var adjacencyMatrix = Array(placesOfInterest.size, { LongArray(placesOfInterest.size) })
         for (elem in durations)
@@ -47,18 +49,13 @@ class MapsViewModel @Inject constructor(val mRepository: PlacesRepository, priva
         val selEdge = Array<Int>(placesOfInterest.size, { i -> -1 })
         var pairs = Array(placesOfInterest.size, { ArrayList<Int>(placesOfInterest.size) })
 
-        //minEdge[0] = 0
-
         for (i in 0 until placesOfInterest.size) {
             var v = -1
             for (j in 0 until placesOfInterest.size) {
                 if (!used[j] && (v == -1 || minEdge[j] < minEdge[v]))
                     v = j
             }
-//            if (minEdge[v] == Long.MAX_VALUE) {
-//                Log.d("canceled", "No MST")
-//                break
-//            }
+
             used[v] = true
             for (t in 0 until placesOfInterest.size) {
                 if (adjacencyMatrix[v][t] != 0L && adjacencyMatrix[v][t] < minEdge[t]) {
@@ -102,14 +99,62 @@ class MapsViewModel @Inject constructor(val mRepository: PlacesRepository, priva
         }
     }
 
-    class NetworkCall(private var routeDao: RoadDurationDao) : AsyncTask<List<Showplace>, Void, List<RoadDuration>>() {
+    fun findLoops(result: List<Long>, limit: Long) {
+        val start = placesOfInterest.size
+        val durations = mRouteDao.getAll()
+        var adjacencyMatrix = Array(placesOfInterest.size + 1, { LongArray(placesOfInterest.size + 1) })
+        for (elem in durations)
+            adjacencyMatrix[elem.from][elem.to] = elem.duration
+        for ((index,len) in result.withIndex()) {
+            adjacencyMatrix[index][placesOfInterest.size] = len
+            adjacencyMatrix[placesOfInterest.size][index] = len
+        }
+        var curLen = 0L
+        var currentPath = ArrayList<Int>()
+        for ((index,elem) in placesOfInterest.withIndex()) {
+            curLen += adjacencyMatrix[index][start]
+
+            var possibleRoutes: List<Long>? = null
+            if (2 * curLen < limit) {
+                currentPath.add(index)
+                //change!!
+                possibleRoutes = adjacencyMatrix[index].filterIndexed { id, item -> !currentPath.contains(id) }
+            }
+
+            if (possibleRoutes != null && possibleRoutes.isNotEmpty())
+                traverseNextLayer(start, index, curLen, limit, currentPath, possibleRoutes, adjacencyMatrix)
+
+        }
+    }
+
+    fun traverseNextLayer(start: Int, prev:Int, curLen: Long, limit: Long, currentPath: ArrayList<Int>,
+                          possibleRoutes: List<Long>, adjacencyMatrix: Array<LongArray>) {
+        for ((index,elem) in possibleRoutes.withIndex()) {
+            if (curLen + elem + adjacencyMatrix[index][start] < limit) {
+                currentPath.add(index)
+                routes.add(Route(currentPath.clone() as ArrayList<Int>, curLen + elem + adjacencyMatrix[index][start]))
+                currentPath.remove(index)
+            }
+        }
+//        for (i in 0 until possibleRoutes.size) {
+//            currentPath.add(i)
+//            curLen +=
+//            var newRoutes = adjacencyMatrix[i].filterIndexed { id, item -> !currentPath.contains(id) }
+//            if (newRoutes != null && newRoutes.isNotEmpty())
+//                traverseNextLayer(start, curLen, limit, currentPath, possibleRoutes, adjacencyMatrix)
+//        }
+    }
+
+
+
+    class NetworkDatasetCall(private var routeDao: RoadDurationDao) : AsyncTask<List<Showplace>, Void, List<RoadDuration>>() {
         override fun doInBackground(vararg params: List<Showplace>): List<RoadDuration> {
             val context = GeoApiContext.Builder().apiKey("AIzaSyCwgJJ26wafmQdFLI6whLUExGCEBeL5aPA").build()
             val places = params[0]
             val routes = ArrayList<RoadDuration>()
             try {
                 val points = places.map { "${it.lat},${it.lng}" }
-                for ((column,point) in points.withIndex()) {
+                for ((column, point) in points.withIndex()) {
                     val req = DistanceMatrixApi.newRequest(context)
                     val destinations = points.joinToString("|")
                     val trix = req.origins(point)

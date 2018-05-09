@@ -1,45 +1,50 @@
 package com.example.vvoitsekh.googlemapskyivsights
 
-import android.Manifest
-import android.content.Context
 import android.content.pm.PackageManager
 import android.databinding.DataBindingUtil
-import android.support.v7.app.AppCompatActivity
+import android.location.Location
+import android.os.AsyncTask
 import android.os.Bundle
+import android.os.Looper
 import android.support.v4.app.ActivityCompat
 import android.support.v4.content.ContextCompat
+import android.support.v7.app.AppCompatActivity
 import android.util.Log
-import android.view.LayoutInflater
 import android.view.View
-import android.view.ViewGroup
 import android.widget.AdapterView
-import com.example.vvoitsekh.googlemapskyivsights.databinding.ActivityMapsBinding
-import com.google.android.gms.maps.*
-
-import com.google.android.gms.maps.model.LatLng
-import dagger.android.AndroidInjection
-import javax.inject.Inject
-
-import android.widget.ArrayAdapter
-import android.widget.TextView
 import android.widget.Toast
+import com.example.vvoitsekh.googlemapskyivsights.databinding.ActivityMapsBinding
 import com.example.vvoitsekh.googlemapskyivsights.db.RoadDurationDao
-import com.google.android.gms.maps.model.Marker
+import com.google.android.gms.location.*
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.GoogleMap
+import com.google.android.gms.maps.OnMapReadyCallback
+import com.google.android.gms.maps.SupportMapFragment
+import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.Polygon
 import com.google.android.gms.maps.model.PolygonOptions
-import com.google.maps.model.TravelMode
+import com.google.android.gms.tasks.Task
 import com.google.maps.DistanceMatrixApi
 import com.google.maps.GeoApiContext
 import com.google.maps.errors.ApiException
+import com.google.maps.model.TravelMode
+import dagger.android.AndroidInjection
+import javax.inject.Inject
 
 
-class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarkerClickListener {
+class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLocationButtonClickListener {
+    private val PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION = 1
+    private val TAG = MapsActivity::class.java.toString()
+    private val mDefaultLocation = LatLng(50.44, 30.52)
 
     private lateinit var mMap: GoogleMap
     private lateinit var mBinding: ActivityMapsBinding
+    private lateinit var mFusedLocationProviderClient: FusedLocationProviderClient
 
-    private var mSelectedMarker: Marker? = null
     private val mPolygons = ArrayList<Polygon>()
+    private var mLocationPermissionGranted = false
+    private var mRequestingLocation = false
+    private var mLastKnownLocation: Location? = null
 
     @Inject lateinit var mViewModel: MapsViewModel
     @Inject lateinit var mRouteDao: RoadDurationDao
@@ -55,6 +60,8 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarker
         val mapFragment = supportFragmentManager
                 .findFragmentById(R.id.map) as SupportMapFragment
         mapFragment.getMapAsync(this)
+
+        mFusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
 
         mViewModel.checkDatabase()
 
@@ -72,12 +79,88 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarker
             mPolygons.add(polygon)
         }
 
-//        val values = arrayOf("Android", "iPhone", "WindowsMobile", "Blackberry", "WebOS", "Ubuntu", "Windows7", "Max OS X", "Linux", "OS/2", "Ubuntu", "Windows7", "Max OS X", "Linux", "OS/2", "Ubuntu", "Windows7", "Max OS X", "Linux", "OS/2", "Android", "iPhone", "WindowsMobile")
-//
-//        val list = ArrayList<String>()
-//        for (i in values.indices) {
-//            list.add(values[i])
-//        }
+        //startLocationUpdates()
+
+    }
+
+    private fun updateLocationUI() {
+        try {
+            if (mLocationPermissionGranted) {
+                mMap.isMyLocationEnabled = true
+                mMap.uiSettings.isMyLocationButtonEnabled = true
+            } else {
+                mMap.isMyLocationEnabled = false
+                mMap.uiSettings.isMyLocationButtonEnabled = false
+                mLastKnownLocation = null
+                getLocationPermission()
+            }
+        } catch (e: SecurityException) {
+            Log.e("Exception: %s", e.message)
+        }
+    }
+
+    private fun getDeviceLocation() {
+        /*
+         * Get the best and most recent location of the device, which may be null in rare
+         * cases when a location is not available.
+         */
+        try {
+            if (mLocationPermissionGranted) {
+                val locationResult = mFusedLocationProviderClient.lastLocation
+                val loc = locationResult
+                locationResult.addOnCanceledListener {
+                    Toast.makeText(this, "canceled", Toast.LENGTH_SHORT).show()
+                }
+                locationResult.addOnFailureListener {
+                    Toast.makeText(this, "failed", Toast.LENGTH_SHORT).show()
+                }
+                locationResult.addOnCompleteListener(this, {
+                    @Override
+                    fun onComplete(task: Task<Location>) {
+                        if (task.isSuccessful) {
+                            // Set the map's camera position to the current location of the device.
+                            mLastKnownLocation = task.result
+
+                            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(
+                                    LatLng(mLastKnownLocation?.latitude!!,
+                                            mLastKnownLocation?.longitude!!), 12f))
+                        } else {
+                            Log.d(TAG, "Current location is null. Using defaults.")
+                            Log.e(TAG, "Exception: %s", task.exception)
+                            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(mDefaultLocation, 12f))
+                            mMap.uiSettings.isMyLocationButtonEnabled = false
+                        }
+                    }
+                })
+            }
+        } catch (e: SecurityException) {
+            Log.e("Exception: %s", e.message)
+        }
+    }
+
+
+    private fun getLocationPermission() {
+        if (ContextCompat.checkSelfPermission(this.applicationContext,
+                android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            mLocationPermissionGranted = true
+            updateLocationUI()
+            startLocationUpdates()
+        } else {
+            ActivityCompat.requestPermissions(this,
+                    arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION),
+                    PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION)
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        mLocationPermissionGranted = false
+        when (requestCode) {
+            PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION ->
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)
+                    mLocationPermissionGranted = true
+        }
+        updateLocationUI()
+        startLocationUpdates()
     }
 
     /**
@@ -91,102 +174,122 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMarker
      */
     override fun onMapReady(googleMap: GoogleMap) {
         mMap = googleMap
-        mMap.setOnMarkerClickListener(this)
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED) {
-            mMap.isMyLocationEnabled = true
-            mMap.uiSettings.isMyLocationButtonEnabled = true
-
-            mMap.setOnMyLocationButtonClickListener {
-                val loc = LatLng(mMap.myLocation.latitude,mMap.myLocation.longitude);
-                mMap.moveCamera(CameraUpdateFactory.newLatLng(loc))
-                true
-            }
-        } else {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 0)
-        }
-
-        // Add a marker in Sydney and move the camera
-
-        val kyiv = LatLng(50.44, 30.52)
         //mMap.addMarker(MarkerOptions().position(sydney).title("Marker in Kyiv"))
-        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(kyiv, 11F))
+        mMap.setOnMyLocationButtonClickListener(this)
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(mDefaultLocation, 11F))
+
+        updateLocationUI()
+
+        //getDeviceLocation()
 
         val markers = mViewModel.getMarkers()
-        for(marker in markers) {
+        for (marker in markers) {
             mMap.addMarker(marker)
         }
     }
 
-    override fun onMarkerClick(marker: Marker?): Boolean {
-        mSelectedMarker = marker
-        marker?.showInfoWindow()
+    private fun startLocationUpdates() {
+        if (!mLocationPermissionGranted)
+            getLocationPermission()
+        else
+            mRequestingLocation = true
+        // Create the location request to start receiving updates
+        val request = createLocationRequest()
+        // Create LocationSettingsRequest object using location request
+        val builder = LocationSettingsRequest.Builder()
+        builder.addLocationRequest(request)
+        val locationSettingsRequest = builder.build()
+        // Check whether location settings are satisfied
+        // https://developers.google.com/android/reference/com/google/android/gms/location/SettingsClient
+        val settingsClient = LocationServices.getSettingsClient(this)
+        settingsClient.checkLocationSettings(locationSettingsRequest)
+
+        try {
+            mFusedLocationProviderClient.requestLocationUpdates(request, object : LocationCallback() {
+                override fun onLocationResult(locationResult: LocationResult) {
+                    // do work here
+                    onLocationChanged(locationResult.lastLocation)
+                }
+            }, Looper.myLooper())
+        } catch (ex: SecurityException) {
+            Log.e(TAG, "request location updates failed: " + ex.message)
+            mRequestingLocation = false
+        }
+    }
+
+    private fun onLocationChanged(location: Location?) {
+        mLastKnownLocation = location
+
+    }
+
+    private fun createLocationRequest(): LocationRequest {
+        return LocationRequest().apply {
+            interval = 10000
+            fastestInterval = 2000
+            priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+        }
+    }
+
+
+    override fun onMyLocationButtonClick(): Boolean {
         return true
     }
 
 
     fun findPaths(view: View) {
-        if (mSelectedMarker != null) {
+        mLastKnownLocation?.apply {
             if (mRouteDao.getAll().size == 0)
-                Toast.makeText(this, "loading data", Toast.LENGTH_SHORT)
+                Toast.makeText(this@MapsActivity, "loading data", Toast.LENGTH_SHORT).show()
             else {
-                mViewModel.generateRoutes(mSelectedMarker?.title!!, mBinding.editTime.text.toString().toLong().toSeconds())
-                mViewModel.routes.sortBy { it.points.size }
-                val routes = mViewModel.routes.take(10)
+                NetworkPointCall(LatLng(mLastKnownLocation!!.latitude, mLastKnownLocation!!.longitude))
+                        .execute(mViewModel.getPlaces())
 
-                val adapter = StableArrayAdapter(this,
-                        R.layout.listview_item, routes.toTypedArray())
-                mBinding.listview.adapter = adapter
-                mBinding.listview.visibility = View.VISIBLE
+//                mViewModel.generateRoutes(this, mBinding.editTime.text.toString().toLong().toSeconds())
+//                mViewModel.routes.sortBy { it.points.size }
+//                val routes = mViewModel.routes.take(10)
+//
+//                val adapter = StableArrayAdapter(this@MapsActivity,
+//                        R.layout.listview_item, routes.toTypedArray())
+//                mBinding.listview.adapter = adapter
+//                mBinding.listview.visibility = View.VISIBLE
             }
         }
     }
 
-    private inner class StableArrayAdapter(context: Context, textViewResourceId: Int,
-                                           objects: Array<Route>) : ArrayAdapter<Route>(context, textViewResourceId, objects) {
+    inner class NetworkPointCall(private var location: LatLng) : AsyncTask<List<Showplace>, Void, List<Long>>() {
+        override fun doInBackground(vararg params: List<Showplace>): List<Long> {
+            val context = GeoApiContext.Builder().apiKey("AIzaSyCwgJJ26wafmQdFLI6whLUExGCEBeL5aPA").build()
+            val places = params[0]
+            val routes = ArrayList<Long>()
+            try {
+                val points = places.map { "${it.lat},${it.lng}" }
+                val req = DistanceMatrixApi.newRequest(context)
+                val destinations = points.joinToString("|")
+                val trix = req.origins(location.toString())
+                        .destinations(destinations)
+                        .mode(TravelMode.WALKING)
+                        .language("en-US")
+                        .await()
 
-        internal var mIdMap = HashMap<Route, Int>()
-
-        init {
-            for (i in objects.indices) {
-                mIdMap.put(objects[i], i)
+                for (elem in trix.rows[0].elements) {
+                    routes.add(elem.duration.inSeconds)
+                }
+            } catch (e: ApiException) {
+                Log.e("ERROR", e.message)
+            } catch (e: Exception) {
+                Log.e("ERROR", e.message)
             }
+            return routes
         }
 
-
-        override fun getItemId(position: Int): Long {
-            val item = getItem(position)
-            return mIdMap[item]!!.toLong()
-        }
-
-
-
-        override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
-            val data = getItem(position)
-            if (convertView == null) {
-                val viewHolder = ViewHolder()
-                var view = LayoutInflater.from(context).inflate(R.layout.listview_item, parent, false)
-                viewHolder.points = view.findViewById(R.id.points)
-                viewHolder.time = view.findViewById(R.id.time)
-                viewHolder.points.text = "places: ${data.points.size}"
-                viewHolder.time.text = "time: ${data.time.toMins()}"
-                view.tag = viewHolder
-                return view
-            }
-            return convertView
+        override fun onPostExecute(result: List<Long>?) {
+            if (result != null)
+                mViewModel.findLoops(result, mBinding.editTime.text.toString().toLong().toSeconds())
         }
     }
 
-    private inner class ViewHolder {
-        lateinit var points:TextView
-        lateinit var time:TextView
+
+    private fun Long.toSeconds(): Long {
+        return this * 3600
     }
-}
-
-private fun Long.toSeconds(): Long {
-    return this * 3600
-}
-
-private fun Long.toMins(): String {
-    return "${this / 3600} hour, ${this % 3600} min "
 }
