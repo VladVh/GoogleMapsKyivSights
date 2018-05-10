@@ -51,6 +51,8 @@ class StableArrayAdapter(context: Context, textViewResourceId: Int,
     }
 
     private fun Long.toMins(): String {
-        return "${this / 3600} hour, ${this % 3600} min "
+        val hours = this / 3600
+        val mins = (this - hours * 3600) / 60
+        return "$hours hour, $mins min "
     }
 }

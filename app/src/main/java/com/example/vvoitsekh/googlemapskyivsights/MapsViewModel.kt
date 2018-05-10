@@ -6,7 +6,9 @@ import android.os.AsyncTask
 import android.util.Log
 import com.example.vvoitsekh.googlemapskyivsights.db.RoadDuration
 import com.example.vvoitsekh.googlemapskyivsights.db.RoadDurationDao
+import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
+import com.google.maps.DirectionsApi
 import com.google.maps.DistanceMatrixApi
 import com.google.maps.GeoApiContext
 import com.google.maps.errors.ApiException
@@ -21,6 +23,7 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
     private var placesOfInterest: List<Showplace> = mRepository.getPlaces()
     private val indexArray = Array<Int>(placesOfInterest.size + 1, { it -> it})
     val routes = ArrayList<Route>()
+    lateinit var currentLocation: LatLng
 
     fun getMarkers(): List<MarkerOptions> {
         return placesOfInterest.map { item -> MarkerOptions().position(item.getPosition()).title(item.name) }
@@ -99,8 +102,10 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
         }
     }
 
-    fun findLoops(result: List<Long>, limit: Long) {
+    fun findLoops(location: Location, result: List<Long>, limit: Long) {
         val start = placesOfInterest.size
+        currentLocation = LatLng(location.latitude, location.longitude)
+
         val durations = mRouteDao.getAll()
         var adjacencyMatrix = Array(placesOfInterest.size + 1, { LongArray(placesOfInterest.size + 1) })
         for (elem in durations)
@@ -109,6 +114,8 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
             adjacencyMatrix[index][placesOfInterest.size] = len
             adjacencyMatrix[placesOfInterest.size][index] = len
         }
+        routes.clear()
+
         var curLen = 0L
         var currentPath = ArrayList<Int>()
         currentPath.add(start)
@@ -119,35 +126,113 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
             if (2 * curLen < limit) {
                 currentPath.add(index)
                 possibleRoutes = indexArray.filter { item -> !currentPath.contains(item) }
+
+                if (possibleRoutes.isNotEmpty())
+                    traverseNextLayer(start, index, curLen, limit, currentPath, possibleRoutes, adjacencyMatrix)
+
+                currentPath.remove(index)
             }
-
-            if (possibleRoutes != null && possibleRoutes.isNotEmpty())
-                traverseNextLayer(start, index, curLen, limit, currentPath, possibleRoutes, adjacencyMatrix)
-
         }
     }
 
     private fun traverseNextLayer(start: Int, prev:Int, curLen: Long, limit: Long, currentPath: ArrayList<Int>,
                                   possibleRoutes: List<Int>, adjacencyMatrix: Array<LongArray>) {
         for (elem in possibleRoutes) {
-            if (curLen + adjacencyMatrix[prev][elem] + adjacencyMatrix[elem][start] < limit) {
+            if (curLen + adjacencyMatrix[prev][elem] + adjacencyMatrix[elem][start] < limit
+                    && !checkRouteIntersection(currentPath, elem)) {
                 currentPath.add(elem)
                 routes.add(Route(currentPath.clone() as ArrayList<Int>,
                         curLen + adjacencyMatrix[prev][elem] + adjacencyMatrix[elem][start]))
+
+                val newLen = curLen + adjacencyMatrix[prev][elem]
+                //if (newLen + adjacencyMatrix[elem][start] < limit) {
+                    val newRoutes = indexArray.filter { item -> !currentPath.contains(item) }
+                    if (newRoutes.isNotEmpty())
+                        traverseNextLayer(start, elem, newLen, limit, currentPath, newRoutes, adjacencyMatrix)
+                //}
+
                 currentPath.remove(elem)
             }
         }
-        for (elem in possibleRoutes) {
-            currentPath.add(elem)
-            val newLen = curLen + adjacencyMatrix[prev][elem]
-            if (newLen + adjacencyMatrix[elem][start] < limit) {
-                val newRoutes = indexArray.filter { item -> !currentPath.contains(item) }
-                if (newRoutes.isNotEmpty())
-                    traverseNextLayer(start, elem, newLen, limit, currentPath, newRoutes, adjacencyMatrix)
-            }
-            currentPath.remove(elem)
+//        for (elem in possibleRoutes) {
+//            currentPath.add(elem)
+//            val newLen = curLen + adjacencyMatrix[prev][elem]
+//            if (newLen + adjacencyMatrix[elem][start] < limit) {
+//                val newRoutes = indexArray.filter { item -> !currentPath.contains(item) }
+//                if (newRoutes.isNotEmpty())
+//                    traverseNextLayer(start, elem, newLen, limit, currentPath, newRoutes, adjacencyMatrix)
+//            }
+//            currentPath.remove(elem)
+//
+//        }
+    }
 
+    private fun checkRouteIntersection(route: ArrayList<Int>, elem:Int): Boolean {
+        if (route.size < 3)
+            return false
+
+        val start2 = LatLng(placesOfInterest[route.last()].lat, placesOfInterest[route.last()].lng)
+        val end2 = LatLng(placesOfInterest[elem].lat, placesOfInterest[elem].lng)
+        for (i in 1 until route.size - 2) {
+            val start1 = LatLng(placesOfInterest[route[i]].lat, placesOfInterest[route[i]].lng)
+            val end1 = LatLng(placesOfInterest[route[i+1]].lat, placesOfInterest[route[i+1]].lng)
+            if (segmentIntersection(start1, end1, start2, end2))
+                return true
         }
+        val start1 = currentLocation
+        val end1 = LatLng(placesOfInterest[route[1]].lat, placesOfInterest[route[1]].lng)
+        if (segmentIntersection(start1, end1, start2, end2))
+            return true
+
+        return false
+    }
+
+    private inline fun intersect(a: Double, b: Double, c: Double, d: Double): Boolean {
+        var a1 = a
+        var b1 = b
+        var c1 = c
+        var d1 = d
+        if (a > b) {
+            var k = a1
+            a1 = b1
+            b1 = k
+        }
+        if (c > d) {
+            var k = c1
+            c1 = d1
+            d1 = k
+        }
+        return maxOf(a1, c1) <= minOf(b1, d1)
+    }
+
+    private inline fun area(a: LatLng, b: LatLng, c: LatLng): Double {
+        return (b.latitude - a.latitude) * (c.longitude - a.longitude) - (b.longitude - a.longitude) * (c.latitude - a.latitude)
+    }
+
+    private fun segmentIntersection(start1: LatLng, end1: LatLng, start2: LatLng, end2: LatLng): Boolean {
+        return intersect(start1.latitude, end1.latitude, start2.latitude, end2.latitude) &&
+                intersect(start1.longitude, end1.longitude, start2.longitude, end2.longitude) &&
+                area(start1, end1, start2) * area(start1, end1, end2) <= 0 &&
+                area(start2, end2, start1) * area(start2, end2, end1) <= 0
+//        val dir1 = LatLng(end1.latitude - start1.latitude, end1.longitude - start1.longitude)
+//        val dir2 = LatLng(end2.latitude - start2.latitude, end2.longitude - start2.longitude)
+//        val a1 = -dir1.longitude
+//        val b1 = dir1.latitude
+//        val d1 = -(a1*start1.latitude + b1*start1.longitude)
+//
+//        val a2 = -dir2.longitude
+//        val b2 = dir2.latitude
+//        val d2 = -(a2*start2.latitude + b2*start2.longitude)
+//
+//        val seg1start = a2*start1.latitude + b2*start1.longitude + d2
+//        val seg1end = a2*end1.latitude + b2*end1.longitude + d2
+//
+//        val seg2start = a1*start2.latitude + b1*start2.longitude + d1
+//        val seg2end = a1*end2.latitude + b1*end2.longitude + d1
+//
+//        if (seg1start * seg1end >= 0 || seg2start * seg2end >= 0)
+//            return false
+//        return true
     }
 
 

@@ -66,10 +66,11 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
         mViewModel.checkDatabase()
 
         mBinding.listview.onItemClickListener = AdapterView.OnItemClickListener { parent, view, position, id ->
-            val data = parent.getItemAtPosition(position) as Route
-            val places = mViewModel.getPlaces().slice(data.points)
-            val polygonOpt = PolygonOptions().addAll(places.map { LatLng(it.lat, it.lng) })
-
+            var data = parent.getItemAtPosition(position) as Route
+            var dataCopy = data.copy(points = ArrayList(data.points), time = data.time)
+            dataCopy.points.removeAt(0)
+            val places = mViewModel.getPlaces().slice(dataCopy.points)
+            val polygonOpt = PolygonOptions().addAll(places.map { LatLng(it.lat, it.lng) }).add(mViewModel.currentLocation)
             if (mPolygons.isNotEmpty()) {
                 val deleted = mPolygons.removeAt(0)
                 deleted.remove()
@@ -219,7 +220,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
 
     private fun onLocationChanged(location: Location?) {
         mLastKnownLocation = location
-
     }
 
     private fun createLocationRequest(): LocationRequest {
@@ -285,10 +285,10 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
 
         override fun onPostExecute(result: List<Long>?) {
             if (result != null && result.isNotEmpty()) {
-                mViewModel.findLoops(result, mBinding.editTime.text.toString().toLong().toSeconds())
+                mLastKnownLocation?.let { mViewModel.findLoops(it, result, mBinding.editTime.text.toString().toLong().toSeconds()) }
 
-                mViewModel.routes.sortBy { it.points.size }
-                val routes = mViewModel.routes.take(10)
+                mViewModel.routes.sortByDescending { it.points.size }
+                val routes = mViewModel.routes.take(15)
 
                 val adapter = StableArrayAdapter(this@MapsActivity,
                         R.layout.listview_item, routes.toTypedArray())
