@@ -14,16 +14,17 @@ import android.view.View
 import android.widget.AdapterView
 import android.widget.Toast
 import com.example.vvoitsekh.googlemapskyivsights.databinding.ActivityMapsBinding
+import com.example.vvoitsekh.googlemapskyivsights.db.DirectionPolyline
+import com.example.vvoitsekh.googlemapskyivsights.db.RoadDuration
 import com.example.vvoitsekh.googlemapskyivsights.db.RoadDurationDao
 import com.google.android.gms.location.*
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.Polygon
-import com.google.android.gms.maps.model.PolygonOptions
+import com.google.android.gms.maps.model.*
 import com.google.android.gms.tasks.Task
+import com.google.maps.DirectionsApi
 import com.google.maps.DistanceMatrixApi
 import com.google.maps.GeoApiContext
 import com.google.maps.errors.ApiException
@@ -41,10 +42,13 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
     private lateinit var mBinding: ActivityMapsBinding
     private lateinit var mFusedLocationProviderClient: FusedLocationProviderClient
 
-    private val mPolygons = ArrayList<Polygon>()
+    private val mPolygons = ArrayList<Polyline>()
     private var mLocationPermissionGranted = false
     private var mRequestingLocation = false
     private var mLastKnownLocation: Location? = null
+    private var mLastDirections: List<DirectionPolyline> = ArrayList<DirectionPolyline>()
+
+    var info: List<RoadDuration> = emptyList()
 
     @Inject lateinit var mViewModel: MapsViewModel
     @Inject lateinit var mRouteDao: RoadDurationDao
@@ -64,20 +68,36 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
         mFusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
 
         mViewModel.checkDatabase()
+        info = mRouteDao.getAll()
 
         mBinding.listview.onItemClickListener = AdapterView.OnItemClickListener { parent, view, position, id ->
             var data = parent.getItemAtPosition(position) as Route
             var dataCopy = data.copy(points = ArrayList(data.points), time = data.time)
             dataCopy.points.removeAt(0)
-            val places = mViewModel.getPlaces().slice(dataCopy.points)
-            val polygonOpt = PolygonOptions().addAll(places.map { LatLng(it.lat, it.lng) }).add(mViewModel.currentLocation)
-            if (mPolygons.isNotEmpty()) {
-                val deleted = mPolygons.removeAt(0)
-                deleted.remove()
-            }
+            //val places = mViewModel.getPlaces().slice(dataCopy.points)
 
-            val polygon = mMap.addPolygon(polygonOpt)
-            mPolygons.add(polygon)
+            var polygonOpt2 = PolylineOptions()
+
+            polygonOpt2.addAll(mLastDirections[dataCopy.points[0]].points.map { it -> LatLng(it.lat, it.lng) })
+            var res = mMap.addPolyline(polygonOpt2)
+            for (i in 0 until dataCopy.points.size - 1) {
+                polygonOpt2 = PolylineOptions()
+                var elem = info.find { it.from == dataCopy.points[i] && it.to == dataCopy.points[i+1] }
+                polygonOpt2.addAll(elem!!.directions.points.map { it -> LatLng(it.lat, it.lng) })
+                res = mMap.addPolyline(polygonOpt2)
+            }
+            polygonOpt2 = PolylineOptions()
+            polygonOpt2.addAll(mLastDirections[dataCopy.points.last()].points.map { it -> LatLng(it.lat, it.lng) })
+            res = mMap.addPolyline(polygonOpt2)
+            //val polygonOpt = PolygonOptions().addAll(places.map { LatLng(it.lat, it.lng) }).add(mViewModel.currentLocation)
+
+//            if (mPolygons.isNotEmpty()) {
+//                val deleted = mPolygons.removeAt(0)
+//                deleted.remove()
+//            }
+//
+//            val polygon = mMap.addPolyline(polygonOpt2)
+//            mPolygons.add(polygon)
         }
 
         //startLocationUpdates()
@@ -256,11 +276,11 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
         }
     }
 
-    inner class NetworkPointCall(private var location: LatLng) : AsyncTask<List<Showplace>, Void, List<Long>>() {
-        override fun doInBackground(vararg params: List<Showplace>): List<Long> {
+    inner class NetworkPointCall(private var location: LatLng) : AsyncTask<List<Showplace>, Void, List<RoadDuration>>() {
+        override fun doInBackground(vararg params: List<Showplace>): List<RoadDuration> {
             val context = GeoApiContext.Builder().apiKey("AIzaSyCwgJJ26wafmQdFLI6whLUExGCEBeL5aPA").build()
             val places = params[0]
-            val routes = ArrayList<Long>()
+            val routes = ArrayList<RoadDuration>()
             try {
                 val points = places.map { "${it.lat},${it.lng}" }
                 val req = DistanceMatrixApi.newRequest(context)
@@ -272,8 +292,19 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
                         .language("en-US")
                         .await()
 
-                for (elem in trix.rows[0].elements) {
-                    routes.add(elem.duration.inSeconds)
+                for ((index,elem) in trix.rows[0].elements.withIndex()) {
+                    routes.add(RoadDuration(0, -1, index, elem.duration.inSeconds, DirectionPolyline(emptyList())))
+                }
+
+                for ((index, point) in points.withIndex()) {
+                    val directionsReq = DirectionsApi.newRequest(context)
+                    val trix = directionsReq.origin(origin)
+                            .destination(point)
+                            .mode(TravelMode.WALKING)
+                            .language("en-US")
+                            .await()
+
+                        routes[index].directions = DirectionPolyline(trix.routes[0].overviewPolyline.decodePath())
                 }
             } catch (e: ApiException) {
                 Log.e("ERROR", e.message)
@@ -283,10 +314,10 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
             return routes
         }
 
-        override fun onPostExecute(result: List<Long>?) {
+        override fun onPostExecute(result: List<RoadDuration>?) {
             if (result != null && result.isNotEmpty()) {
-                mLastKnownLocation?.let { mViewModel.findLoops(it, result, mBinding.editTime.text.toString().toLong().toSeconds()) }
-
+                mLastKnownLocation?.let { mViewModel.findLoops(it, result.map { it -> it.duration }, mBinding.editTime.text.toString().toLong().toSeconds()) }
+                mLastDirections = result.map { it -> it.directions }
                 mViewModel.routes.sortByDescending { it.points.size }
                 val routes = mViewModel.routes.take(15)
 
@@ -295,8 +326,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
                 mBinding.listview.adapter = adapter
                 mBinding.listview.visibility = View.VISIBLE
             }
-
-
         }
     }
 

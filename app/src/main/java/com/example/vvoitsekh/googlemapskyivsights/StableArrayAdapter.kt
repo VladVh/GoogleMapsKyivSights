@@ -30,25 +30,27 @@ class StableArrayAdapter(context: Context, textViewResourceId: Int,
 
     override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
         val data = getItem(position)
-        if (convertView == null) {
-            val viewHolder = ViewHolder()
-            var view = LayoutInflater.from(context).inflate(R.layout.listview_item, parent, false)
-            viewHolder.points = view.findViewById(R.id.points)
-            viewHolder.time = view.findViewById(R.id.time)
-            viewHolder.points.text = "places: ${data.points.size}"
-            viewHolder.time.text = "time: ${data.time.toMins()}"
-            view.tag = viewHolder
-            return view
-        }
-        return convertView
+        var view = convertView
+        if (view == null)
+            view = LayoutInflater.from(context).inflate(R.layout.listview_item, parent, false)
 
-
+        val points = view?.findViewById<TextView>(R.id.points)
+        val time = view?.findViewById<TextView>(R.id.time)
+        points?.text = "places: ${data.points.size}"
+        time?.text = "time: ${data.time.toMins()}"
+//            viewHolder.points = view.findViewById(R.id.points)
+//            viewHolder.time = view.findViewById(R.id.time)
+//            viewHolder.points.text = "places: ${data.points.size}"
+//            viewHolder.time.text = "time: ${data.time.toMins()}"
+//            view.tag = viewHolder
+//            return view
+        return view!!
     }
 
-    private inner class ViewHolder {
-        lateinit var points: TextView
-        lateinit var time: TextView
-    }
+//    private inner class ViewHolder {
+//        lateinit var points: TextView
+//        lateinit var time: TextView
+//    }
 
     private fun Long.toMins(): String {
         val hours = this / 3600

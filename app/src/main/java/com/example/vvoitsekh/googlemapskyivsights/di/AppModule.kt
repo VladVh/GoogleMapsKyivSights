@@ -25,6 +25,7 @@ class AppModule {
     @Provides
     fun provideDb(application: Application) =
             Room.databaseBuilder(application, SightsDatabase::class.java, "sights.db")
+                    //.addMigrations(SightsDatabase.MIGRATION_3_4)
                     .allowMainThreadQueries().build()
 //
     @Singleton

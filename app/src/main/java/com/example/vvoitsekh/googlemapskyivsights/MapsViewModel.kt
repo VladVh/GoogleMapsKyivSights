@@ -4,6 +4,7 @@ import android.arch.lifecycle.ViewModel
 import android.location.Location
 import android.os.AsyncTask
 import android.util.Log
+import com.example.vvoitsekh.googlemapskyivsights.db.DirectionPolyline
 import com.example.vvoitsekh.googlemapskyivsights.db.RoadDuration
 import com.example.vvoitsekh.googlemapskyivsights.db.RoadDurationDao
 import com.google.android.gms.maps.model.LatLng
@@ -13,6 +14,7 @@ import com.google.maps.DistanceMatrixApi
 import com.google.maps.GeoApiContext
 import com.google.maps.errors.ApiException
 import com.google.maps.model.TravelMode
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 /**
@@ -21,7 +23,7 @@ import javax.inject.Inject
 class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private val mRouteDao: RoadDurationDao) : ViewModel() {
 
     private var placesOfInterest: List<Showplace> = mRepository.getPlaces()
-    private val indexArray = Array<Int>(placesOfInterest.size + 1, { it -> it})
+    private val indexArray = Array<Int>(placesOfInterest.size + 1, { it -> it })
     val routes = ArrayList<Route>()
     lateinit var currentLocation: LatLng
 
@@ -33,8 +35,9 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
 
     fun checkDatabase() {
         if (mRouteDao.getAll().size != placesOfInterest.size * (placesOfInterest.size - 1)) {
-            mRouteDao.deleteAll()
-            NetworkDatasetCall(mRouteDao).execute(placesOfInterest)
+            //mRouteDao.deleteAll()
+            //NetworkDistanceCall(mRouteDao).execute(placesOfInterest)
+            //NetworkDirectionsCall(mRouteDao).execute(placesOfInterest)
         }
     }
 
@@ -110,7 +113,7 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
         var adjacencyMatrix = Array(placesOfInterest.size + 1, { LongArray(placesOfInterest.size + 1) })
         for (elem in durations)
             adjacencyMatrix[elem.from][elem.to] = elem.duration
-        for ((index,len) in result.withIndex()) {
+        for ((index, len) in result.withIndex()) {
             adjacencyMatrix[index][placesOfInterest.size] = len
             adjacencyMatrix[placesOfInterest.size][index] = len
         }
@@ -119,7 +122,7 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
         var curLen = 0L
         var currentPath = ArrayList<Int>()
         currentPath.add(start)
-        for ((index,elem) in placesOfInterest.withIndex()) {
+        for ((index, elem) in placesOfInterest.withIndex()) {
             curLen = adjacencyMatrix[index][start]
 
             var possibleRoutes: List<Int>? = null
@@ -135,7 +138,7 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
         }
     }
 
-    private fun traverseNextLayer(start: Int, prev:Int, curLen: Long, limit: Long, currentPath: ArrayList<Int>,
+    private fun traverseNextLayer(start: Int, prev: Int, curLen: Long, limit: Long, currentPath: ArrayList<Int>,
                                   possibleRoutes: List<Int>, adjacencyMatrix: Array<LongArray>) {
         for (elem in possibleRoutes) {
             if (curLen + adjacencyMatrix[prev][elem] + adjacencyMatrix[elem][start] < limit
@@ -146,9 +149,9 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
 
                 val newLen = curLen + adjacencyMatrix[prev][elem]
                 //if (newLen + adjacencyMatrix[elem][start] < limit) {
-                    val newRoutes = indexArray.filter { item -> !currentPath.contains(item) }
-                    if (newRoutes.isNotEmpty())
-                        traverseNextLayer(start, elem, newLen, limit, currentPath, newRoutes, adjacencyMatrix)
+                val newRoutes = indexArray.filter { item -> !currentPath.contains(item) }
+                if (newRoutes.isNotEmpty())
+                    traverseNextLayer(start, elem, newLen, limit, currentPath, newRoutes, adjacencyMatrix)
                 //}
 
                 currentPath.remove(elem)
@@ -167,7 +170,7 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
 //        }
     }
 
-    private fun checkRouteIntersection(route: ArrayList<Int>, elem:Int): Boolean {
+    private fun checkRouteIntersection(route: ArrayList<Int>, elem: Int): Boolean {
         if (route.size < 3)
             return false
 
@@ -175,7 +178,7 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
         val end2 = LatLng(placesOfInterest[elem].lat, placesOfInterest[elem].lng)
         for (i in 1 until route.size - 2) {
             val start1 = LatLng(placesOfInterest[route[i]].lat, placesOfInterest[route[i]].lng)
-            val end1 = LatLng(placesOfInterest[route[i+1]].lat, placesOfInterest[route[i+1]].lng)
+            val end1 = LatLng(placesOfInterest[route[i + 1]].lat, placesOfInterest[route[i + 1]].lng)
             if (segmentIntersection(start1, end1, start2, end2))
                 return true
         }
@@ -236,34 +239,13 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
     }
 
 
-
-    class NetworkDatasetCall(private var routeDao: RoadDurationDao) : AsyncTask<List<Showplace>, Void, List<RoadDuration>>() {
+    class NetworkDistanceCall(private var routeDao: RoadDurationDao) : AsyncTask<List<Showplace>, Void, List<RoadDuration>>() {
         override fun doInBackground(vararg params: List<Showplace>): List<RoadDuration> {
             val context = GeoApiContext.Builder().apiKey("AIzaSyCwgJJ26wafmQdFLI6whLUExGCEBeL5aPA").build()
             val places = params[0]
-            val routes = ArrayList<RoadDuration>()
+            var routes = ArrayList<RoadDuration>()
             try {
-                val points = places.map { "${it.lat},${it.lng}" }
-                for ((column, point) in points.withIndex()) {
-                    val req = DistanceMatrixApi.newRequest(context)
-                    val destinations = points.joinToString("|")
-                    val trix = req.origins(point)
-                            .destinations(destinations)
-                            .mode(TravelMode.WALKING)
-                            .language("en-US")
-                            .await()
-
-                    for (row in trix.rows) {
-                        for ((index, elem) in row.elements.withIndex()) {
-                            if (index != column)
-                                routes.add(RoadDuration(
-                                        (row.elements.size * (column + 1) + index).toLong(),
-                                        column,
-                                        index,
-                                        elem.duration.inSeconds))
-                        }
-                    }
-                }
+                routes = distanceMatrixApiRequest(places, context)
 
             } catch (e: ApiException) {
                 Log.e("ERROR", e.message)
@@ -277,6 +259,85 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
         override fun onPostExecute(result: List<RoadDuration>) {
             for (route in result) {
                 routeDao.insert(route)
+            }
+        }
+
+        private fun distanceMatrixApiRequest(places: List<Showplace>, context: GeoApiContext): ArrayList<RoadDuration> {
+            val routes = ArrayList<RoadDuration>()
+            val points = places.map { "${it.lat},${it.lng}" }
+            for ((column, point) in points.withIndex()) {
+                val req = DistanceMatrixApi.newRequest(context)
+                val destinations = points.joinToString("|")
+                val trix = req.origins(point)
+                        .destinations(destinations)
+                        .mode(TravelMode.WALKING)
+                        .language("en-US")
+                        .await()
+
+                for (row in trix.rows) {
+                    for ((index, elem) in row.elements.withIndex()) {
+                        if (index != column)
+                            routes.add(RoadDuration(
+                                    (row.elements.size * (column + 1) + index).toLong(),
+                                    column,
+                                    index,
+                                    elem.duration.inSeconds,
+                                    DirectionPolyline(emptyList())))
+                    }
+                }
+            }
+            return routes
+        }
+    }
+
+    class NetworkDirectionsCall(private var routeDao: RoadDurationDao) : AsyncTask<List<Showplace>, Void, List<RoadDuration>>() {
+        override fun doInBackground(vararg params: List<Showplace>): ArrayList<RoadDuration> {
+            val context = GeoApiContext.Builder()
+                    .apiKey("AIzaSyCwgJJ26wafmQdFLI6whLUExGCEBeL5aPA")
+                    .connectTimeout(3, TimeUnit.MINUTES)
+                    .readTimeout(1, TimeUnit.MINUTES)
+                    .build()
+            val places = params[0]
+            var routes = ArrayList<RoadDuration>()
+            try {
+                routes = directionsApiRequest(places, context)
+            } catch (e: ApiException) {
+                Log.e("ERROR", e.message)
+            } catch (e: Exception) {
+                Log.e("ERROR", e.message)
+            }
+            return routes
+        }
+
+        private fun directionsApiRequest(places: List<Showplace>, context: GeoApiContext): ArrayList<RoadDuration> {
+            val routes = ArrayList<RoadDuration>()
+            val points = places.map { "${it.lat},${it.lng}" }
+            for ((row, point) in points.withIndex()) {
+                for ((column, point2) in points.withIndex()) {
+                    if(row != column) {
+                        val req = DirectionsApi.newRequest(context)
+                        val trix = req.origin(point)
+                                .destination(point2)
+                                .mode(TravelMode.WALKING)
+                                .language("en-US")
+                                .await()
+
+                        for (elem in trix.routes) {
+                            routes.add(RoadDuration(
+                                    (points.size * (row + 1) + column).toLong(), row, column, -1, DirectionPolyline(elem.overviewPolyline.decodePath())))
+                        }
+                    }
+                }
+            }
+            return routes
+        }
+
+        override fun onPostExecute(result: List<RoadDuration>) {
+            val items = routeDao.getAll()
+            for (route in result) {
+                if (route.directions != null) {
+                    routeDao.updateDurations(route.directions!!, route.id!!)
+                }
             }
         }
     }

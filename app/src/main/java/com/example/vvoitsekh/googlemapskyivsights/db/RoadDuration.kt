@@ -1,10 +1,7 @@
 package com.example.vvoitsekh.googlemapskyivsights.db
 
-import android.arch.persistence.room.Entity
-import android.arch.persistence.room.PrimaryKey
-import android.arch.persistence.room.ColumnInfo
-import android.arch.persistence.room.TypeConverter
-import com.example.vvoitsekh.googlemapskyivsights.Showplace
+import android.arch.persistence.room.*
+import com.google.maps.model.LatLng
 
 
 /**
@@ -12,21 +9,11 @@ import com.example.vvoitsekh.googlemapskyivsights.Showplace
  */
 
 @Entity(tableName = "Durations")
+@TypeConverters(DirectionsConverter::class)
 data class RoadDuration(
         @PrimaryKey(autoGenerate = true) var id: Long?,
         @ColumnInfo(name = "from") var from: Int,
         @ColumnInfo(name = "to") var to: Int,
-        @ColumnInfo(name = "duration") var duration: Long)
+        @ColumnInfo(name = "duration") var duration: Long,
+        @ColumnInfo(name = "directions") var directions: DirectionPolyline)
 
-//class ShowplaceConverter{
-//    @TypeConverter
-//    fun fromShowplace(value: Showplace?):String? {
-//        return StringBuilder().append(value?.name).append("%").append(value?.lat).append("%").append(value?.lng).toString()
-//    }
-//
-//    @TypeConverter
-//    fun fromString(value: String):Showplace? {
-//        val values = value.split('%')
-//        return Showplace(values[0], values[1].toDouble(), values[2].toDouble())
-//    }
-//}
