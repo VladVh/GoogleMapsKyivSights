@@ -15,5 +15,10 @@ data class RoadDuration(
         @ColumnInfo(name = "from") var from: Int,
         @ColumnInfo(name = "to") var to: Int,
         @ColumnInfo(name = "duration") var duration: Long,
-        @ColumnInfo(name = "directions") var directions: DirectionPolyline)
+        @ColumnInfo(name = "directions") var directions: DirectionPolyline) {
+
+    override fun toString(): String {
+        return "$id!$from!$to!$duration!${DirectionsConverter().fromDirections(directions)})"
+    }
+}
 

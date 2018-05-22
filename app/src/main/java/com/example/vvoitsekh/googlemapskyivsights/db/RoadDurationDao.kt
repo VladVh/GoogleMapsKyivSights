@@ -21,6 +21,9 @@ interface RoadDurationDao {
     @Query("Update Durations SET directions= :points WHERE id = :sid")
     fun updateDurations(points: DirectionPolyline, sid: Long)
 
+    @Query("Update Durations SET duration= :newDuration WHERE id= :sid")
+    fun updateTime(newDuration: Long, sid:Long)
+
     @Query("Delete from Durations")
     fun deleteAll()
 }

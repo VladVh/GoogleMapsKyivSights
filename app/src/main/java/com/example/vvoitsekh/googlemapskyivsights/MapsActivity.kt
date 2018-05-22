@@ -1,5 +1,6 @@
 package com.example.vvoitsekh.googlemapskyivsights
 
+import android.arch.persistence.room.Room
 import android.content.pm.PackageManager
 import android.databinding.DataBindingUtil
 import android.location.Location
@@ -17,6 +18,7 @@ import com.example.vvoitsekh.googlemapskyivsights.databinding.ActivityMapsBindin
 import com.example.vvoitsekh.googlemapskyivsights.db.DirectionPolyline
 import com.example.vvoitsekh.googlemapskyivsights.db.RoadDuration
 import com.example.vvoitsekh.googlemapskyivsights.db.RoadDurationDao
+import com.example.vvoitsekh.googlemapskyivsights.db.SightsDatabase
 import com.google.android.gms.location.*
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
@@ -29,7 +31,12 @@ import com.google.maps.DistanceMatrixApi
 import com.google.maps.GeoApiContext
 import com.google.maps.errors.ApiException
 import com.google.maps.model.TravelMode
+import com.huma.room_for_asset.RoomAsset
 import dagger.android.AndroidInjection
+import java.io.FileOutputStream
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import javax.inject.Inject
 
 
@@ -56,7 +63,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
     override fun onCreate(savedInstanceState: Bundle?) {
         AndroidInjection.inject(this)
         super.onCreate(savedInstanceState)
-
         mBinding = DataBindingUtil.setContentView(this, R.layout.activity_maps)
         mBinding.setLifecycleOwner(this)
         //setContentView(R.layout.activity_maps)
@@ -76,19 +82,30 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
             dataCopy.points.removeAt(0)
             //val places = mViewModel.getPlaces().slice(dataCopy.points)
 
-            var polygonOpt2 = PolylineOptions()
+            if (mPolygons.isNotEmpty()) {
+                while (!mPolygons.isEmpty()) {
+                    val deleted = mPolygons.removeAt(0)
+                    deleted.remove()
+                }
+            }
 
+            var polygonOpt2 = PolylineOptions()
             polygonOpt2.addAll(mLastDirections[dataCopy.points[0]].points.map { it -> LatLng(it.lat, it.lng) })
-            var res = mMap.addPolyline(polygonOpt2)
+            var polygon = mMap.addPolyline(polygonOpt2)
+            mPolygons.add(polygon)
+
             for (i in 0 until dataCopy.points.size - 1) {
                 polygonOpt2 = PolylineOptions()
                 var elem = info.find { it.from == dataCopy.points[i] && it.to == dataCopy.points[i+1] }
                 polygonOpt2.addAll(elem!!.directions.points.map { it -> LatLng(it.lat, it.lng) })
-                res = mMap.addPolyline(polygonOpt2)
+                polygon = mMap.addPolyline(polygonOpt2)
+                mPolygons.add(polygon)
             }
+
             polygonOpt2 = PolylineOptions()
             polygonOpt2.addAll(mLastDirections[dataCopy.points.last()].points.map { it -> LatLng(it.lat, it.lng) })
-            res = mMap.addPolyline(polygonOpt2)
+            polygon = mMap.addPolyline(polygonOpt2)
+            mPolygons.add(polygon)
             //val polygonOpt = PolygonOptions().addAll(places.map { LatLng(it.lat, it.lng) }).add(mViewModel.currentLocation)
 
 //            if (mPolygons.isNotEmpty()) {
@@ -99,9 +116,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
 //            val polygon = mMap.addPolyline(polygonOpt2)
 //            mPolygons.add(polygon)
         }
-
-        //startLocationUpdates()
-
     }
 
     private fun updateLocationUI() {
@@ -257,23 +271,32 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
 
 
     fun findPaths(view: View) {
-        mLastKnownLocation?.apply {
-            if (mRouteDao.getAll().isEmpty())
-                Toast.makeText(this@MapsActivity, "loading data", Toast.LENGTH_SHORT).show()
+        if (mLastKnownLocation != null) {
+            info = mRouteDao.getAll()
+            if (info.size < 2450)
+                Toast.makeText(this, "loading data", Toast.LENGTH_SHORT).show()
             else {
                 NetworkPointCall(LatLng(mLastKnownLocation!!.latitude, mLastKnownLocation!!.longitude))
                         .execute(mViewModel.getPlaces())
 
-//                mViewModel.generateRoutes(this, mBinding.editTime.text.toString().toLong().toSeconds())
-//                mViewModel.routes.sortBy { it.points.size }
-//                val routes = mViewModel.routes.take(10)
-//
-//                val adapter = StableArrayAdapter(this@MapsActivity,
-//                        R.layout.listview_item, routes.toTypedArray())
-//                mBinding.listview.adapter = adapter
-//                mBinding.listview.visibility = View.VISIBLE
             }
+        } else {
+            Toast.makeText(this, "Searching current location. Please enable GPS", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    fun resetSearch(view: View) {
+        if (mBinding.listview.visibility == View.VISIBLE) {
+            mBinding.listview.visibility = View.GONE
+            mBinding.resetButton.visibility = View.INVISIBLE
+        }
+    }
+
+    fun hideList(view: View) {
+        if (mBinding.listview.visibility == View.VISIBLE)
+            mBinding.listview.visibility = View.GONE
+        else
+            mBinding.listview.visibility = View.VISIBLE
     }
 
     inner class NetworkPointCall(private var location: LatLng) : AsyncTask<List<Showplace>, Void, List<RoadDuration>>() {
@@ -325,6 +348,8 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
                         R.layout.listview_item, routes.toTypedArray())
                 mBinding.listview.adapter = adapter
                 mBinding.listview.visibility = View.VISIBLE
+                mBinding.resetButton.visibility = View.VISIBLE
+                mBinding.hideButton.visibility = View.VISIBLE
             }
         }
     }

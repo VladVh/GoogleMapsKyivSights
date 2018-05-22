@@ -9,7 +9,7 @@ import com.google.maps.model.LatLng
 /**
  * Created by Vlad on 28.04.2018.
  */
-@Database(entities = arrayOf(RoadDuration::class), version = 3)
+@Database(entities = arrayOf(RoadDuration::class), version = 1)
 @TypeConverters(DirectionsConverter::class)
 abstract class SightsDatabase : RoomDatabase() {
 

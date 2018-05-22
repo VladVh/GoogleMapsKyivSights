@@ -2,4 +2,6 @@
     <string name="app_name">GoogleMapsKyivSights</string>
     <string name="title_activity_maps">Map</string>
     <string name="findRoute">Find Route</string>
+    <string name="reset_button">reset</string>
+    <string name="hide">hide</string>
 </resources>

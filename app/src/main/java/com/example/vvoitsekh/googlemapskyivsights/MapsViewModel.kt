@@ -36,8 +36,8 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
     fun checkDatabase() {
         if (mRouteDao.getAll().size != placesOfInterest.size * (placesOfInterest.size - 1)) {
             //mRouteDao.deleteAll()
-            //NetworkDistanceCall(mRouteDao).execute(placesOfInterest)
-            //NetworkDirectionsCall(mRouteDao).execute(placesOfInterest)
+            NetworkDistanceCall(mRouteDao).execute(placesOfInterest)
+            NetworkDirectionsCall(mRouteDao).execute(placesOfInterest)
         }
     }
 
@@ -241,7 +241,10 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
 
     class NetworkDistanceCall(private var routeDao: RoadDurationDao) : AsyncTask<List<Showplace>, Void, List<RoadDuration>>() {
         override fun doInBackground(vararg params: List<Showplace>): List<RoadDuration> {
-            val context = GeoApiContext.Builder().apiKey("AIzaSyCwgJJ26wafmQdFLI6whLUExGCEBeL5aPA").build()
+            val context = GeoApiContext.Builder().apiKey("AIzaSyCwgJJ26wafmQdFLI6whLUExGCEBeL5aPA")
+                    .connectTimeout(3, TimeUnit.MINUTES)
+                    .readTimeout(3, TimeUnit.MINUTES)
+                    .build()
             val places = params[0]
             var routes = ArrayList<RoadDuration>()
             try {
@@ -276,13 +279,17 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
 
                 for (row in trix.rows) {
                     for ((index, elem) in row.elements.withIndex()) {
-                        if (index != column)
-                            routes.add(RoadDuration(
+                        if (index != column) {
+                            var roadDuration = RoadDuration(
                                     (row.elements.size * (column + 1) + index).toLong(),
                                     column,
                                     index,
-                                    elem.duration.inSeconds,
-                                    DirectionPolyline(emptyList())))
+                                    elem.duration.inSeconds + 300,
+                                    DirectionPolyline(emptyList()))
+                            Log.e("log", roadDuration.toString())
+
+                            routes.add(roadDuration)
+                        }
                     }
                 }
             }
@@ -295,7 +302,7 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
             val context = GeoApiContext.Builder()
                     .apiKey("AIzaSyCwgJJ26wafmQdFLI6whLUExGCEBeL5aPA")
                     .connectTimeout(3, TimeUnit.MINUTES)
-                    .readTimeout(1, TimeUnit.MINUTES)
+                    .readTimeout(3, TimeUnit.MINUTES)
                     .build()
             val places = params[0]
             var routes = ArrayList<RoadDuration>()
@@ -323,8 +330,10 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
                                 .await()
 
                         for (elem in trix.routes) {
-                            routes.add(RoadDuration(
-                                    (points.size * (row + 1) + column).toLong(), row, column, -1, DirectionPolyline(elem.overviewPolyline.decodePath())))
+                            var roadDuration = RoadDuration(
+                                    (points.size * (row + 1) + column).toLong(), row, column, -1, DirectionPolyline(elem.overviewPolyline.decodePath()))
+                            Log.e("log2", roadDuration.toString())
+                            routes.add(roadDuration)
                         }
                     }
                 }
@@ -333,7 +342,6 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
         }
 
         override fun onPostExecute(result: List<RoadDuration>) {
-            val items = routeDao.getAll()
             for (route in result) {
                 if (route.directions != null) {
                     routeDao.updateDurations(route.directions!!, route.id!!)

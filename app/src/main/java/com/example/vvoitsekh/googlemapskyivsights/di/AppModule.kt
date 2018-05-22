@@ -6,7 +6,7 @@ import android.content.Context
 import com.example.vvoitsekh.databindinglivedata.di.ViewModelModule
 import com.example.vvoitsekh.googlemapskyivsights.PlacesRepository
 import com.example.vvoitsekh.googlemapskyivsights.db.SightsDatabase
-import dagger.Binds
+import com.huma.room_for_asset.RoomAsset
 import dagger.Module
 import dagger.Provides
 import javax.inject.Singleton
