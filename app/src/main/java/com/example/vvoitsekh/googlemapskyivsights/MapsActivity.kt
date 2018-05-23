@@ -301,7 +301,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, GoogleMap.OnMyLoca
 
     inner class NetworkPointCall(private var location: LatLng) : AsyncTask<List<Showplace>, Void, List<RoadDuration>>() {
         override fun doInBackground(vararg params: List<Showplace>): List<RoadDuration> {
-            val context = GeoApiContext.Builder().apiKey("AIzaSyCwgJJ26wafmQdFLI6whLUExGCEBeL5aPA").build()
+            val context = GeoApiContext.Builder().apiKey("").build()
             val places = params[0]
             val routes = ArrayList<RoadDuration>()
             try {
