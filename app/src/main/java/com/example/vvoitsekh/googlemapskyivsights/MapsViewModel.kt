@@ -241,7 +241,7 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
 
     class NetworkDistanceCall(private var routeDao: RoadDurationDao) : AsyncTask<List<Showplace>, Void, List<RoadDuration>>() {
         override fun doInBackground(vararg params: List<Showplace>): List<RoadDuration> {
-            val context = GeoApiContext.Builder().apiKey("AIzaSyCwgJJ26wafmQdFLI6whLUExGCEBeL5aPA")
+            val context = GeoApiContext.Builder().apiKey("")
                     .connectTimeout(3, TimeUnit.MINUTES)
                     .readTimeout(3, TimeUnit.MINUTES)
                     .build()
@@ -300,7 +300,7 @@ class MapsViewModel @Inject constructor(mRepository: PlacesRepository, private v
     class NetworkDirectionsCall(private var routeDao: RoadDurationDao) : AsyncTask<List<Showplace>, Void, List<RoadDuration>>() {
         override fun doInBackground(vararg params: List<Showplace>): ArrayList<RoadDuration> {
             val context = GeoApiContext.Builder()
-                    .apiKey("AIzaSyCwgJJ26wafmQdFLI6whLUExGCEBeL5aPA")
+                    .apiKey("")
                     .connectTimeout(3, TimeUnit.MINUTES)
                     .readTimeout(3, TimeUnit.MINUTES)
                     .build()
